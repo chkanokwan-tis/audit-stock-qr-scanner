@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
+<title>Stock QR Scanner</title>
+
+<!--
+  Stock QR Scanner — V3 (QR เล็ก 1.7 ซม. / สแกนจากระยะไกล)
+
+  - ขอภาพจากกล้องความละเอียดสูงสุดที่เครื่องให้ได้ (สูงสุด 4K)
+  - ปุ่มซูม 1x / 2x / 3x (ซูมจากเซนเซอร์กล้องจริง ถ้าเครื่องรองรับ)
+  - ปุ่มสลับเลนส์ (iPhone รุ่นที่มีเลนส์ซูม)
+  - ปุ่มไฟฉาย (ถ้าเครื่องรองรับ)
+  - อ่าน QR ด้วย ZXing (WebAssembly) — แม่นและเร็วกว่าตัวเดิมมากกับ QR เล็ก/เบลอ
+    Android ใช้ตัวอ่านในตัวของ Chrome (BarcodeDetector) ก่อน
+  - อ่านเฉพาะในกรอบกลางจอที่ความละเอียดเต็ม (ไม่ย่อภาพ)
+
+  V5: เปิดเป็นแท็บใหม่จากแอป (mode=popup) → ส่ง VIN กลับทาง postMessage
+      แล้วปิดแท็บ แอปไม่ต้องโหลดใหม่ · ถ้าไม่ได้ จะกลับแบบเดิม (?vin=...)
+
+  V4 (เร็วขึ้น):
+  - สลับอ่านภาพเล็ก (เร็วมาก) กับภาพละเอียด (QR ไกล) ทีละเฟรม
+  - อ่านทันทีที่กล้องส่งเฟรมใหม่ ไม่หน่วง 40 ms
+  - เครื่องที่มีซูมจากกล้อง ใช้ภาพ 1080p แทน 4K (เบากว่า 4 เท่า)
+  - มุมซ้ายบนแสดงความละเอียด + เวลาที่ใช้อ่านต่อเฟรม
+
+  ลิงก์ที่ส่งกลับแอปยังเหมือนเดิม:
+    .../exec?vin=XXXXXXXXXXXXXXXXX
+    .../exec?screen=scan   (ปุ่มกลับ)
+-->
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://script.google.com">
+<link rel="dns-prefetch" href="https://script.google.com">
+
+<!-- ตัวอ่าน QR: ZXing (WebAssembly) -->
+<script src="https://cdn.jsdelivr.net/npm/zxing-wasm@2.2.4/dist/iife/reader/index.js"></script>
+
+<style>
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  background: #eef2f9;
+  color: #16233f;
+}
+
+.container {
+  max-width: 520px;
+  min-height: 100vh;
+  margin: auto;
+  padding: 18px 16px 24px;
+}
+
+h1 {
+  text-align: center;
+  margin: 6px 0 14px;
+  font-size: 22px;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: #2f6fed;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 6px 0;
+  cursor: pointer;
+}
+
+.back-btn:active { opacity: 0.6; }
+
+/* ---------- กล้อง ---------- */
+
+.viewport {
+  position: relative;
+  margin: 0 auto;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  max-height: 62vh;
+  background: #000;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.viewport video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+/* กรอบสแกน = พื้นที่ที่ถูกอ่านจริง (กลางภาพ) */
+.roi {
+  position: absolute;
+  left: 20%;
+  top: 20%;
+  width: 60%;
+  height: 60%;
+  border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, .35);
+  pointer-events: none;
+}
+
+.roi::before,
+.roi::after,
+.roi i::before,
+.roi i::after {
+  content: "";
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 3px solid #fff;
+}
+
+.roi::before { left: -2px;  top: -2px;    border-right: 0; border-bottom: 0; border-top-left-radius: 12px; }
+.roi::after  { right: -2px; top: -2px;    border-left: 0;  border-bottom: 0; border-top-right-radius: 12px; }
+.roi i::before { left: -2px;  bottom: -2px; border-right: 0; border-top: 0; border-bottom-left-radius: 12px; }
+.roi i::after  { right: -2px; bottom: -2px; border-left: 0;  border-top: 0; border-bottom-right-radius: 12px; }
+
+.roi.hit::before, .roi.hit::after, .roi.hit i::before, .roi.hit i::after {
+  border-color: #3ddc84;
+}
+
+.res-badge {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ---------- ปุ่มควบคุม ---------- */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.chip {
+  min-width: 52px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1.5px solid #c9d5f2;
+  background: #fff;
+  color: #2f6fed;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chip.on {
+  background: #2f6fed;
+  border-color: #2f6fed;
+  color: #fff;
+}
+
+.chip[hidden] { display: none; }
+
+.status {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 14px;
+  color: #66738f;
+  min-height: 22px;
+  line-height: 1.45;
+}
+
+.status.err { color: #d33a3a; }
+
+.tip {
+  margin-top: 6px;
+  text-align: center;
+  font-size: 12.5px;
+  color: #8a94ab;
+}
+
+.result {
+  margin-top: 14px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  text-align: center;
+}
+
+.result-title {
+  font-size: 14px;
+  color: #66738f;
+}
+
+.vin {
+  margin-top: 6px;
+  font-size: 20px;
+  font-weight: 700;
+  word-break: break-all;
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+<div class="container">
+
+  <button type="button" class="back-btn" id="btnBack">← กลับ</button>
+
+  <h1>Scan QR</h1>
+
+  <div class="viewport" id="viewport">
+    <video id="video" playsinline muted autoplay></video>
+    <div class="roi" id="roi"><i></i></div>
+    <div class="res-badge" id="resBadge" hidden></div>
+  </div>
+
+  <div class="controls">
+    <button type="button" class="chip" id="zoom1" data-zoom="1" hidden>1x</button>
+    <button type="button" class="chip" id="zoom2" data-zoom="2" hidden>2x</button>
+    <button type="button" class="chip" id="zoom3" data-zoom="3" hidden>3x</button>
+    <button type="button" class="chip" id="btnLens" hidden>สลับเลนส์</button>
+    <button type="button" class="chip" id="btnTorch" hidden>ไฟฉาย</button>
+  </div>
+
+  <div class="status" id="status">กำลังเตรียมกล้อง...</div>
+  <div class="tip" id="tip">วาง QR ให้อยู่ในกรอบ · ถ้าอยู่ไกลให้กด 2x หรือ 3x</div>
+
+  <div class="result">
+    <div class="result-title">VIN ที่อ่านได้</div>
+    <div class="vin" id="vin">-</div>
+  </div>
+
+</div>
+
+
+<script>
+
+/* =========================================================
+ * CONFIGURATION
+ * ========================================================= */
+
+const params = new URLSearchParams(window.location.search);
+
+const APP_URL =
+  params.get('returnUrl') ||
+  'https://script.google.com/a/macros/tripetch-isuzu.co.th/s/AKfycbwAk2fjCXzX7p8bTXzV854Deh3kNoTZCiNK5WHmIFYHYrFJU_rDSwxX41kJrcBFuhrZ8Q/exec';
+
+const ZXING_WASM_URL =
+  'https://cdn.jsdelivr.net/npm/zxing-wasm@2.2.4/dist/reader/zxing_reader.wasm';
+
+const JSQR_URL =
+  'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+
+// พื้นที่ที่อ่าน = กลางภาพ 60% × 60% (ตรงกับกรอบบนจอ)
+const ROI = 0.6;
+
+const PREF_KEY = 'stockScanner.v3';
+
+const $ = (id) => document.getElementById(id);
+const video = $('video');
+const statusEl = $('status');
+
+let stream = null;
+let track = null;
+let scanCompleted = false;
+let decoding = false;
+let loopTimer = null;
+let frameCount = 0;
+let loopId = 0;            // กันไม่ให้มี loop ซ้อนกันตอนสลับเลนส์
+
+let decoder = null;          // 'native' | 'zxing' | 'jsqr'
+let nativeDetector = null;
+
+let backCameras = [];        // [{deviceId, label}]
+let currentDeviceId = null;
+let zoomCaps = null;         // {min, max, step}
+let torchOn = false;
+
+const canvas = document.createElement('canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+
+/* =========================================================
+ * HELPERS
+ * ========================================================= */
+
+function setStatus(msg, isErr) {
+  statusEl.textContent = msg;
+  statusEl.className = 'status' + (isErr ? ' err' : '');
+}
+
+function buildAppUrl(extraParam) {
+  const separator = APP_URL.includes('?') ? '&' : '?';
+  return APP_URL + separator + extraParam;
+}
+
+function loadPrefs() {
+  try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch (e) { return {}; }
+}
+
+function savePrefs(patch) {
+  try { localStorage.setItem(PREF_KEY, JSON.stringify(Object.assign(loadPrefs(), patch))); } catch (e) {}
+}
+
+function loadScript(src) {
+  return new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+}
+
+function stopCamera() {
+  clearTimeout(loopTimer);
+  if (stream) {
+    stream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+  }
+  stream = null;
+  track = null;
+}
+
+
+/* =========================================================
+ * VIN CLEAN / EXTRACT
+ * QR อาจมีข้อความอื่นปน เช่น "VIN: MP1FRR90HRT000259" หรือเป็น URL
+ * ========================================================= */
+
+function extractVin(text) {
+  const raw = String(text || '').toUpperCase().trim();
+  const cleaned = raw.replace(/\s+/g, '');
+  if (/^[A-HJ-NPR-Z0-9]{17}$/.test(cleaned)) return cleaned;
+  const match = raw.match(/[A-HJ-NPR-Z0-9]{17}/);
+  return match ? match[0] : cleaned;
+}
+
+
+/* =========================================================
+ * BACK TO STOCK CHECKING APP
+ * ========================================================= */
+
+$('btnBack').addEventListener('click', function () {
+  stopCamera();
+  // เปิดมาเป็นแท็บใหม่ → ปิดแท็บ กลับไปแอปที่เปิดค้างอยู่
+  if (params.get('mode') === 'popup' && window.opener && !window.opener.closed) {
+    try { window.close(); } catch (e) {}
+    setTimeout(() => window.location.replace(buildAppUrl('screen=scan')), 300);
+    return;
+  }
+  window.location.replace(buildAppUrl('screen=scan'));
+});
+
+
+/* =========================================================
+ * QR DECODER
+ * 1) Android/Chrome: BarcodeDetector ในตัว (เร็วที่สุด)
+ * 2) ทุกเครื่องรวม iPhone: ZXing WebAssembly
+ * 3) สำรอง: jsQR (ถ้าโหลด ZXing ไม่ได้)
+ * ========================================================= */
+
+async function prepareDecoder() {
+
+  if ('BarcodeDetector' in window) {
+    try {
+      const formats = await BarcodeDetector.getSupportedFormats();
+      if (formats.indexOf('qr_code') !== -1) {
+        nativeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+      }
+    } catch (e) { nativeDetector = null; }
+  }
+
+  if (typeof ZXingWASM !== 'undefined') {
+    try {
+      await ZXingWASM.prepareZXingModule({
+        overrides: {
+          locateFile: (path, prefix) => path.endsWith('.wasm') ? ZXING_WASM_URL : prefix + path
+        },
+        fireImmediately: true
+      });
+      decoder = 'zxing';
+      return;
+    } catch (e) {
+      console.warn('ZXing load failed:', e);
+    }
+  }
+
+  if (await loadScript(JSQR_URL) && typeof jsQR === 'function') {
+    decoder = 'jsqr';
+    return;
+  }
+
+  decoder = nativeDetector ? 'native' : null;
+}
+
+const ZXING_OPTIONS = {
+  formats: ['QRCode'],
+  tryHarder: true,
+  tryInvert: false,
+  maxNumberOfSymbols: 1
+};
+
+// อ่านกรอบกลางภาพ (ความละเอียดเต็ม) หรือทั้งภาพ (ย่อ)
+/*
+ * PERFORMANCE V4 — อ่านจากเร็วไปละเอียด สลับกันทีละเฟรม
+ * เฟรมส่วนใหญ่ใช้ภาพเล็ก (อ่านเร็วมาก) และแทรกภาพความละเอียดเต็มเป็นระยะ
+ * สำหรับ QR ที่เล็กมาก/อยู่ไกล
+ *
+ *   crop    = สัดส่วนกลางภาพที่ตัดมาอ่าน (1 = ทั้งภาพ)
+ *   maxSide = ย่อไม่ให้ใหญ่เกินนี้ (0 = ความละเอียดเต็ม)
+ *   harder  = ให้ ZXing พยายามหนักขึ้น (ช้ากว่า)
+ */
+const DECODE_STEPS = [
+  { crop: 0.40, maxSide: 960,  harder: false },   // QR กลางจอ ภาพเล็ก — เร็วที่สุด
+  { crop: 0.60, maxSide: 1280, harder: false },
+  { crop: 0.40, maxSide: 0,    harder: true  },   // ความละเอียดเต็ม — QR เล็ก/ไกล
+  { crop: 0.40, maxSide: 960,  harder: false },
+  { crop: 1.00, maxSide: 1280, harder: false },   // ทั้งภาพ — QR ไม่อยู่ในกรอบ
+  { crop: 0.60, maxSide: 0,    harder: true  }
+];
+
+function grabFrame(step) {
+
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return null;
+
+  const sw = Math.round(vw * step.crop);
+  const sh = Math.round(vh * step.crop);
+  const sx = Math.round((vw - sw) / 2);
+  const sy = Math.round((vh - sh) / 2);
+  const scale = step.maxSide ? Math.min(1, step.maxSide / Math.max(sw, sh)) : Math.min(1, 1800 / Math.max(sw, sh));
+
+  const w = Math.round(sw * scale), h = Math.round(sh * scale);
+  if (canvas.width !== w) canvas.width = w;
+  if (canvas.height !== h) canvas.height = h;
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+  return ctx.getImageData(0, 0, w, h);
+}
+
+let decodeMsAvg = 0;
+
+async function decodeOnce() {
+
+  // Android/Chrome: ตัวอ่านในตัว อ่านจากวิดีโอโดยตรง เร็วที่สุด
+  if (nativeDetector && frameCount % 3 !== 2) {
+    try {
+      const found = await nativeDetector.detect(video);
+      if (found && found.length && found[0].rawValue) return found[0].rawValue;
+    } catch (e) { /* ใช้ ZXing ต่อ */ }
+    return null;
+  }
+
+  if (!decoder || decoder === 'native') return null;
+
+  const step = DECODE_STEPS[frameCount % DECODE_STEPS.length];
+  const img = grabFrame(step);
+  if (!img) return null;
+
+  if (decoder === 'zxing') {
+    const res = await ZXingWASM.readBarcodes(img, {
+      formats: ['QRCode'],
+      tryHarder: step.harder,
+      tryInvert: false,
+      tryRotate: step.harder,
+      tryDownscale: step.harder,
+      maxNumberOfSymbols: 1
+    });
+    const ok = res && res.find(r => r.isValid && r.text);
+    return ok ? ok.text : null;
+  }
+
+  if (decoder === 'jsqr') {
+    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+    return code && code.data ? code.data : null;
+  }
+
+  return null;
+}
+
+function nextFrame(cb) {
+  // รอเฟรมใหม่จากกล้อง (ไม่หน่วงเวลาเปล่า ๆ)
+  if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(() => cb());
+  else loopTimer = setTimeout(cb, 16);
+}
+
+async function scanLoop(id) {
+
+  if (id === undefined) id = ++loopId;
+  if (id !== loopId || scanCompleted || !track) return;
+
+  if (!decoding && video.readyState >= 2) {
+    decoding = true;
+    frameCount++;
+    const t0 = performance.now();
+    try {
+      const text = await decodeOnce();
+      if (text) { onScanSuccess(text); return; }
+    } catch (e) {
+      console.warn('decode error:', e);
+    }
+    decodeMsAvg = decodeMsAvg ? decodeMsAvg * 0.9 + (performance.now() - t0) * 0.1 : (performance.now() - t0);
+    if (frameCount % 15 === 0) updateBadge();
+    decoding = false;
+  }
+
+  if (id === loopId) nextFrame(() => scanLoop(id));
+}
+
+
+/* =========================================================
+ * ON QR READ
+ * ========================================================= */
+
+function onScanSuccess(decodedText) {
+
+  if (scanCompleted) return;
+  scanCompleted = true;
+
+  const vin = extractVin(decodedText);
+  const targetUrl = buildAppUrl('vin=' + encodeURIComponent(vin));
+
+  $('roi').classList.add('hit');
+  $('vin').textContent = vin;
+  setStatus('อ่าน QR สำเร็จ — กำลังเปิดข้อมูลรถ...');
+
+  try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) {}
+
+  console.log('QR:', decodedText, '| VIN:', vin);
+
+  stopCamera();
+
+  // Scanner Popup V1: เปิดมาจากแอปเป็นแท็บใหม่ → ส่ง VIN กลับทาง postMessage
+  // แอปไม่ต้องโหลดหน้าใหม่ เร็วกว่ามาก
+  if (IS_POPUP && window.opener && !window.opener.closed) {
+    sendVinToOpener(vin, targetUrl);
+    return;
+  }
+
+  window.location.replace(targetUrl);
+}
+
+
+/* =========================================================
+ * POPUP MODE — ส่ง VIN กลับไปที่แท็บแอปที่เปิดค้างไว้
+ * ถ้าแอปไม่ตอบรับภายใน 1.2 วินาที → กลับแบบเดิม (?vin=...)
+ * ========================================================= */
+
+const IS_POPUP = params.get('mode') === 'popup';
+
+function sendVinToOpener(vin, fallbackUrl) {
+
+  const id = Date.now() + '-' + Math.random().toString(36).slice(2);
+  let acked = false;
+
+  function onAck(ev) {
+    const d = ev.data || {};
+    if (d.type === 'stockScanAck' && d.id === id) {
+      acked = true;
+      window.removeEventListener('message', onAck);
+      setStatus('ส่ง VIN กลับแอปแล้ว — กำลังปิดหน้านี้...');
+      try { window.close(); } catch (e) {}
+      // บางเบราว์เซอร์ไม่ยอมปิดแท็บเอง
+      setTimeout(() => {
+        setStatus('ส่ง VIN กลับแอปแล้ว — สลับกลับไปที่แท็บแอปได้เลย');
+      }, 400);
+    }
+  }
+
+  window.addEventListener('message', onAck);
+
+  // ไม่รู้ origin ที่แน่นอนของหน้าแอป (googleusercontent) จึงใช้ '*'
+  // ข้อความมีแค่ VIN ไม่มีข้อมูลลับ และฝั่งแอปตรวจ origin ของผู้ส่งอีกชั้น
+  try {
+    window.opener.postMessage({ type: 'stockScanVin', vin: vin, id: id }, '*');
+  } catch (e) {}
+
+  setTimeout(() => {
+    if (!acked) {
+      window.removeEventListener('message', onAck);
+      window.location.replace(fallbackUrl);
+    }
+  }, 1200);
+}
+
+
+/* =========================================================
+ * CAMERA
+ * ========================================================= */
+
+function buildConstraints(deviceId) {
+  const v = {
+    width: { ideal: 3840 },
+    height: { ideal: 2160 },
+    frameRate: { ideal: 30 }
+  };
+  if (deviceId) v.deviceId = { exact: deviceId };
+  else v.facingMode = { ideal: 'environment' };
+  return { audio: false, video: v };
+}
+
+async function openStream(deviceId) {
+  try {
+    return await navigator.mediaDevices.getUserMedia(buildConstraints(deviceId));
+  } catch (e) {
+    // บางเครื่องไม่รับค่าความละเอียดที่ขอ → ลองแบบพื้นฐาน
+    if (e && (e.name === 'OverconstrainedError' || e.name === 'NotReadableError')) {
+      const basic = deviceId
+        ? { audio: false, video: { deviceId: { exact: deviceId } } }
+        : { audio: false, video: { facingMode: 'environment' } };
+      return await navigator.mediaDevices.getUserMedia(basic);
+    }
+    throw e;
+  }
+}
+
+async function startCamera(deviceId) {
+
+  stopCamera();
+  setStatus('กำลังเปิดกล้อง...');
+
+  stream = await openStream(deviceId);
+  track = stream.getVideoTracks()[0];
+
+  const settings = track.getSettings ? track.getSettings() : {};
+  currentDeviceId = settings.deviceId || deviceId || null;
+
+  video.srcObject = stream;
+  await video.play().catch(() => {});
+
+  await new Promise(r => {
+    if (video.videoWidth) return r();
+    video.onloadedmetadata = () => r();
+  });
+
+  // ปรับกรอบภาพให้ตรงสัดส่วนกล้องจริง
+  $('viewport').style.aspectRatio = video.videoWidth + ' / ' + video.videoHeight;
+
+  await setupCapabilities();
+  updateBadge();
+
+  setStatus('กล้องพร้อมใช้งาน — เล็ง QR ให้อยู่ในกรอบ');
+
+  scanLoop();
+}
+
+function updateBadge() {
+  const badge = $('resBadge');
+  badge.textContent = video.videoWidth + '×' + video.videoHeight +
+    (decodeMsAvg ? ' · ' + Math.round(decodeMsAvg) + ' ms' : '');
+  badge.hidden = false;
+}
+
+async function setupCapabilities() {
+
+  const caps = (track && track.getCapabilities) ? track.getCapabilities() : {};
+  const prefs = loadPrefs();
+
+  // โฟกัสอัตโนมัติต่อเนื่อง
+  if (caps.focusMode && caps.focusMode.indexOf('continuous') !== -1) {
+    try { await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch (e) {}
+  }
+
+  // ซูมจากกล้อง (ภาพคมกว่าการขยายภาพเอง)
+  zoomCaps = caps.zoom || null;
+  ['zoom1', 'zoom2', 'zoom3'].forEach(id => {
+    const z = Number($(id).dataset.zoom);
+    $(id).hidden = !(zoomCaps && z >= zoomCaps.min && z <= zoomCaps.max + 0.01);
+  });
+
+  if (zoomCaps && video.videoWidth * video.videoHeight > 1920 * 1080) {
+    // มีซูมจากกล้องแล้ว → ใช้ภาพ 1080p ก็พอ (เบากว่า 4K หลายเท่า อ่านเร็วขึ้น)
+    try {
+      await track.applyConstraints({ width: { ideal: 1920 }, height: { ideal: 1080 } });
+      await new Promise(r => setTimeout(r, 150));
+      $('viewport').style.aspectRatio = video.videoWidth + ' / ' + video.videoHeight;
+    } catch (e) {}
+  }
+
+  if (zoomCaps) {
+    // เริ่มที่ 2x (QR เล็ก) หรือค่าที่ผู้ใช้เลือกครั้งก่อน
+    const want = prefs.zoom || 2;
+    await setZoom(Math.min(Math.max(want, zoomCaps.min), zoomCaps.max));
+  }
+
+  // ไฟฉาย
+  $('btnTorch').hidden = !caps.torch;
+  torchOn = false;
+  $('btnTorch').classList.remove('on');
+
+  // สลับเลนส์ (iPhone รุ่นที่มีเลนส์ซูม / Android หลายกล้อง)
+  await listBackCameras();
+  $('btnLens').hidden = backCameras.length < 2;
+}
+
+async function setZoom(z) {
+  if (!track || !zoomCaps) return;
+  try {
+    await track.applyConstraints({ advanced: [{ zoom: z }] });
+    ['zoom1', 'zoom2', 'zoom3'].forEach(id => {
+      $(id).classList.toggle('on', Math.abs(Number($(id).dataset.zoom) - z) < 0.01);
+    });
+    savePrefs({ zoom: z });
+  } catch (e) {
+    console.warn('zoom failed', e);
+  }
+}
+
+async function listBackCameras() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    backCameras = devices
+      .filter(d => d.kind === 'videoinput')
+      .filter(d => !/front|หน้า|user|facetime/i.test(d.label))
+      // เลนส์มุมกว้างพิเศษไม่เหมาะกับ QR เล็ก/ไกล
+      .filter(d => !/ultra ?wide|อัลตร้า/i.test(d.label))
+      .map(d => ({ deviceId: d.deviceId, label: d.label || 'Camera' }));
+  } catch (e) {
+    backCameras = [];
+  }
+}
+
+$('zoom1').onclick = () => setZoom(1);
+$('zoom2').onclick = () => setZoom(2);
+$('zoom3').onclick = () => setZoom(3);
+
+$('btnTorch').onclick = async () => {
+  if (!track) return;
+  torchOn = !torchOn;
+  try {
+    await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+    $('btnTorch').classList.toggle('on', torchOn);
+  } catch (e) {
+    torchOn = false;
+  }
+};
+
+$('btnLens').onclick = async () => {
+  if (backCameras.length < 2) return;
+  const idx = backCameras.findIndex(c => c.deviceId === currentDeviceId);
+  const next = backCameras[(idx + 1) % backCameras.length];
+  savePrefs({ deviceId: next.deviceId });
+  try {
+    await startCamera(next.deviceId);
+    setStatus('เลนส์: ' + next.label);
+  } catch (e) {
+    console.error(e);
+    savePrefs({ deviceId: null });
+    startCamera(null).catch(showCameraError);
+  }
+};
+
+function showCameraError(err) {
+  console.error('Camera start failed:', err);
+  const name = (err && err.name) || '';
+  let msg = 'เปิดกล้องไม่สำเร็จ';
+  if (name === 'NotAllowedError') msg = 'ไม่ได้รับสิทธิ์ใช้กล้อง — อนุญาตกล้องในการตั้งค่าเบราว์เซอร์ แล้วรีเฟรชหน้านี้';
+  else if (name === 'NotFoundError') msg = 'ไม่พบกล้องบนเครื่องนี้';
+  else if (name === 'NotReadableError') msg = 'มีแอปอื่นใช้กล้องอยู่ — ปิดแอปนั้นแล้วลองใหม่';
+  setStatus(msg, true);
+}
+
+
+/* =========================================================
+ * START
+ * ========================================================= */
+
+async function start() {
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setStatus('เบราว์เซอร์นี้เปิดกล้องไม่ได้ — เปิดลิงก์นี้ใน Safari หรือ Chrome', true);
+    return;
+  }
+
+  // เตรียมตัวอ่าน QR พร้อมกับเปิดกล้อง
+  const decoderReady = prepareDecoder();
+
+  const prefs = loadPrefs();
+
+  try {
+    await startCamera(prefs.deviceId || null);
+  } catch (e) {
+    if (prefs.deviceId) {
+      // เลนส์ที่จำไว้ใช้ไม่ได้แล้ว → กลับไปกล้องหลังปกติ
+      savePrefs({ deviceId: null });
+      try { await startCamera(null); } catch (e2) { showCameraError(e2); return; }
+    } else {
+      showCameraError(e);
+      return;
+    }
+  }
+
+  await decoderReady;
+
+  if (!decoder && !nativeDetector) {
+    setStatus('โหลดตัวอ่าน QR ไม่สำเร็จ — ตรวจสอบอินเทอร์เน็ตแล้วรีเฟรช', true);
+  }
+}
+
+// ปิดกล้องเมื่อออกจากหน้า / สลับแอป
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopCamera();
+  } else if (!scanCompleted && !track) {
+    startCamera(currentDeviceId).catch(showCameraError);
+  }
+});
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', start);
+} else {
+  start();
+}
+
+</script>
+
+</body>
+
+</html>
