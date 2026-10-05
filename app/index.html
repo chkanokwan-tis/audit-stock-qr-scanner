@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Stock Check</title>
+
+  <!-- ชื่อ + ไอคอนตอน Add to Home Screen (ทุกเครื่องได้เหมือนกัน) -->
+  <meta name="apple-mobile-web-app-title" content="Stock Check">
+  <meta name="application-name" content="Stock Check">
+  <meta name="theme-color" content="#0B2A52">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="manifest" href="manifest.webmanifest">
+
+  <script>
+    // ===== แก้ตรงนี้ที่เดียว ถ้า Deploy URL ของ Apps Script เปลี่ยน =====
+    var APP_URL = 'https://script.google.com/a/macros/tripetch-isuzu.co.th/s/AKfycbwAk2fjCXzX7p8bTXzV854Deh3kNoTZCiNK5WHmIFYHYrFJU_rDSwxX41kJrcBFuhrZ8Q/exec';
+
+    (function () {
+      var q = new URLSearchParams(location.search);
+      if (q.get('launch') === '1') {
+        // เปิดจากไอคอนบนหน้าจอ → ไปที่แอปทันที
+        location.replace(APP_URL);
+        return;
+      }
+      // เปิดครั้งแรกเพื่อติดตั้ง → แอบเปลี่ยน URL เป็น ?launch=1
+      // เพื่อให้ไอคอนที่ Add to Home Screen จำ URL นี้ไว้ (iPhone ใช้ URL ปัจจุบัน)
+      try { history.replaceState(null, '', location.pathname + '?launch=1'); } catch (e) {}
+      window.__INSTALL_MODE = true;
+    })();
+  </script>
+
+  <style>
+    :root { --blue:#2F5BFF; --ink:#0B1530; --sub:#5B6782; --page:#F3F5FA; --card:#fff; --line:#E4E8F1; }
+    @media (prefers-color-scheme: dark) {
+      :root { --ink:#E8ECF6; --sub:#9AA5BE; --page:#0B1020; --card:#141B2E; --line:#26304A; }
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:var(--page); color:var(--ink);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans Thai",sans-serif;
+      display:flex; align-items:center; justify-content:center; padding:24px 16px; }
+    .card { width:100%; max-width:380px; background:var(--card); border:1px solid var(--line);
+      border-radius:20px; padding:24px 20px; text-align:center; }
+    .logo { width:84px; height:84px; border-radius:20px; display:block; margin:0 auto 12px; }
+    h1 { font-size:20px; margin:0 0 4px; }
+    .sub { color:var(--sub); font-size:14px; margin:0 0 18px; }
+    .btn { display:block; width:100%; padding:13px; border-radius:12px; border:0; background:var(--blue);
+      color:#fff; font-size:15px; font-weight:700; text-decoration:none; margin-bottom:18px; }
+    .steps { text-align:left; font-size:14px; line-height:1.6; border-top:1px solid var(--line); padding-top:14px; }
+    .steps b { display:block; margin-top:8px; }
+    .steps ol { margin:4px 0 0; padding-left:20px; color:var(--sub); }
+    .hidden { display:none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img class="logo" src="icon-192.png" alt="">
+    <h1>Stock Checking App</h1>
+    <p class="sub">เพิ่มไอคอนไว้บนหน้าจอ เพื่อเปิดแอปได้ในแตะเดียว</p>
+    <a class="btn" id="openBtn" href="#">เปิดแอป</a>
+
+    <div class="steps">
+      <div id="ios">
+        <b>iPhone (ใช้ Safari)</b>
+        <ol>
+          <li>แตะปุ่ม <b style="display:inline">แชร์</b> (สี่เหลี่ยมมีลูกศรขึ้น)</li>
+          <li>เลือก <b style="display:inline">เพิ่มไปยังหน้าจอโฮม</b></li>
+          <li>แตะ <b style="display:inline">เพิ่ม</b> — ชื่อและไอคอนจะตั้งให้อัตโนมัติ</li>
+        </ol>
+      </div>
+      <div id="android">
+        <b>Android (ใช้ Chrome)</b>
+        <ol>
+          <li>แตะเมนู <b style="display:inline">⋮</b> มุมขวาบน</li>
+          <li>เลือก <b style="display:inline">เพิ่มลงในหน้าจอหลัก</b></li>
+          <li>แตะ <b style="display:inline">เพิ่ม</b></li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('openBtn').href = APP_URL;
+    var ua = navigator.userAgent;
+    if (/iPhone|iPad|iPod/.test(ua)) document.getElementById('android').className = 'hidden';
+    else if (/Android/.test(ua)) document.getElementById('ios').className = 'hidden';
+  </script>
+</body>
+</html>
