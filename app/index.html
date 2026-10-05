@@ -21,70 +21,305 @@
       var q = new URLSearchParams(location.search);
       if (q.get('launch') === '1') {
         // เปิดจากไอคอนบนหน้าจอ → ไปที่แอปทันที
+        document.documentElement.className = 'launching';
         location.replace(APP_URL);
         return;
       }
-      // เปิดครั้งแรกเพื่อติดตั้ง → แอบเปลี่ยน URL เป็น ?launch=1
+      // เปิดครั้งแรกเพื่อติดตั้ง → เปลี่ยน URL เป็น ?launch=1
       // เพื่อให้ไอคอนที่ Add to Home Screen จำ URL นี้ไว้ (iPhone ใช้ URL ปัจจุบัน)
       try { history.replaceState(null, '', location.pathname + '?launch=1'); } catch (e) {}
-      window.__INSTALL_MODE = true;
     })();
   </script>
 
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap">
+
   <style>
-    :root { --blue:#2F5BFF; --ink:#0B1530; --sub:#5B6782; --page:#F3F5FA; --card:#fff; --line:#E4E8F1; }
-    @media (prefers-color-scheme: dark) {
-      :root { --ink:#E8ECF6; --sub:#9AA5BE; --page:#0B1020; --card:#141B2E; --line:#26304A; }
+    :root {
+      --navy: #0B2A52;
+      --navy-2: #123B72;
+      --accent: #2F5BFF;
+      --ink: #0F1B2D;
+      --sub: #556178;
+      --muted: #8892A6;
+      --page: #F4F6FA;
+      --card: #FFFFFF;
+      --line: #E2E7EF;
+      --chip: #EEF2F8;
+      --on-navy: #FFFFFF;
+      --on-navy-sub: rgba(255,255,255,.72);
     }
-    * { box-sizing:border-box; }
-    body { margin:0; min-height:100vh; background:var(--page); color:var(--ink);
-      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans Thai",sans-serif;
-      display:flex; align-items:center; justify-content:center; padding:24px 16px; }
-    .card { width:100%; max-width:380px; background:var(--card); border:1px solid var(--line);
-      border-radius:20px; padding:24px 20px; text-align:center; }
-    .logo { width:84px; height:84px; border-radius:20px; display:block; margin:0 auto 12px; }
-    h1 { font-size:20px; margin:0 0 4px; }
-    .sub { color:var(--sub); font-size:14px; margin:0 0 18px; }
-    .btn { display:block; width:100%; padding:13px; border-radius:12px; border:0; background:var(--blue);
-      color:#fff; font-size:15px; font-weight:700; text-decoration:none; margin-bottom:18px; }
-    .steps { text-align:left; font-size:14px; line-height:1.6; border-top:1px solid var(--line); padding-top:14px; }
-    .steps b { display:block; margin-top:8px; }
-    .steps ol { margin:4px 0 0; padding-left:20px; color:var(--sub); }
-    .hidden { display:none; }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --ink: #E7ECF5;
+        --sub: #A3AEC2;
+        --muted: #7A859A;
+        --page: #0A1220;
+        --card: #121C2E;
+        --line: #223049;
+        --chip: #1A2740;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      background: var(--page);
+      color: var(--ink);
+      font-family: "IBM Plex Sans Thai", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Thai", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* หน้าระหว่างพาไปแอป (เปิดจากไอคอน) */
+    .launching body > * { display: none; }
+    .launching body { background: var(--navy); }
+
+    /* ---------- Header ---------- */
+    .header {
+      background: linear-gradient(160deg, var(--navy) 0%, var(--navy-2) 100%);
+      color: var(--on-navy);
+      padding: calc(28px + env(safe-area-inset-top)) 20px 64px;
+      text-align: center;
+    }
+    .header .org {
+      font-size: 11.5px;
+      font-weight: 600;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--on-navy-sub);
+      margin: 0 0 24px;
+    }
+    .logo {
+      width: 88px;
+      height: 88px;
+      border-radius: 22px;
+      display: block;
+      margin: 0 auto 16px;
+      box-shadow: 0 10px 28px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.12);
+    }
+    .header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -.01em;
+      margin: 0 0 4px;
+    }
+    .header p {
+      font-size: 14px;
+      color: var(--on-navy-sub);
+      margin: 0;
+    }
+
+    /* ---------- Main ---------- */
+    main {
+      width: 100%;
+      max-width: 440px;
+      margin: -40px auto 0;
+      padding: 0 16px 24px;
+      flex: 1;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 1px 2px rgba(15,27,45,.05), 0 12px 28px -14px rgba(15,27,45,.25);
+    }
+    .card + .card { margin-top: 14px; }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 50px;
+      border-radius: 12px;
+      background: var(--navy);
+      color: #fff;
+      font: inherit;
+      font-size: 16px;
+      font-weight: 600;
+      text-decoration: none;
+      border: 0;
+    }
+    .btn:active { transform: scale(.98); }
+    @media (prefers-color-scheme: dark) { .btn { background: var(--accent); } }
+
+    .signin-note {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin: 14px 0 0;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--sub);
+    }
+    .signin-note svg { flex-shrink: 0; margin-top: 2px; color: var(--muted); }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0 0 4px;
+    }
+    .section-head {
+      font-size: 16px;
+      font-weight: 700;
+      margin: 0 0 14px;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 4px;
+      background: var(--chip);
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+    .tab {
+      font: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--sub);
+      background: transparent;
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 0;
+      cursor: pointer;
+    }
+    .tab[aria-selected="true"] {
+      background: var(--card);
+      color: var(--ink);
+      box-shadow: 0 1px 3px rgba(15,27,45,.12);
+    }
+
+    .steps { list-style: none; margin: 0; padding: 0; }
+    .steps li {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      font-size: 14.5px;
+      line-height: 1.55;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+    .steps li:first-child { border-top: 0; padding-top: 0; }
+    .num {
+      flex-shrink: 0;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--chip);
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .kbd {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 1px 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--chip);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .kbd svg { vertical-align: -2px; }
+    [hidden] { display: none !important; }
+
+    /* ---------- Footer ---------- */
+    footer {
+      text-align: center;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--muted);
+      padding: 8px 16px calc(20px + env(safe-area-inset-bottom));
+    }
+    footer b { color: var(--sub); font-weight: 600; }
   </style>
 </head>
 <body>
-  <div class="card">
+
+  <header class="header">
+    <p class="org">Tri Petch Isuzu Sales · LPC / NVL</p>
     <img class="logo" src="icon-192.png" alt="">
     <h1>Stock Checking App</h1>
-    <p class="sub">เพิ่มไอคอนไว้บนหน้าจอ เพื่อเปิดแอปได้ในแตะเดียว</p>
-    <a class="btn" id="openBtn" href="#">เปิดแอป</a>
+    <p>ระบบตรวจนับสต็อกรถด้วย QR Code</p>
+  </header>
 
-    <div class="steps">
-      <div id="ios">
-        <b>iPhone (ใช้ Safari)</b>
-        <ol>
-          <li>แตะปุ่ม <b style="display:inline">แชร์</b> (สี่เหลี่ยมมีลูกศรขึ้น)</li>
-          <li>เลือก <b style="display:inline">เพิ่มไปยังหน้าจอโฮม</b></li>
-          <li>แตะ <b style="display:inline">เพิ่ม</b> — ชื่อและไอคอนจะตั้งให้อัตโนมัติ</li>
-        </ol>
+  <main>
+
+    <section class="card">
+      <a class="btn" id="openBtn" href="#">
+        เข้าสู่ระบบ
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+      </a>
+      <p class="signin-note">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>
+        <span>สำหรับพนักงานที่ได้รับสิทธิ์เท่านั้น เข้าสู่ระบบด้วยบัญชี Google ของบริษัท (@tripetch-isuzu.co.th)</span>
+      </p>
+    </section>
+
+    <section class="card">
+      <p class="section-title">ติดตั้งบนมือถือ</p>
+      <p class="section-head">เพิ่มไอคอนไว้บนหน้าจอหลัก</p>
+
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tabIos" aria-selected="true">iPhone</button>
+        <button class="tab" role="tab" id="tabAndroid" aria-selected="false">Android</button>
       </div>
-      <div id="android">
-        <b>Android (ใช้ Chrome)</b>
-        <ol>
-          <li>แตะเมนู <b style="display:inline">⋮</b> มุมขวาบน</li>
-          <li>เลือก <b style="display:inline">เพิ่มลงในหน้าจอหลัก</b></li>
-          <li>แตะ <b style="display:inline">เพิ่ม</b></li>
-        </ol>
-      </div>
-    </div>
-  </div>
+
+      <ol class="steps" id="stepsIos">
+        <li><span class="num">1</span><span>เปิดหน้านี้ด้วย <b>Safari</b></span></li>
+        <li><span class="num">2</span><span>แตะปุ่ม
+          <span class="kbd"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>แชร์</span></span></li>
+        <li><span class="num">3</span><span>เลือก <span class="kbd">เพิ่มไปยังหน้าจอโฮม</span></span></li>
+        <li><span class="num">4</span><span>แตะ <span class="kbd">เพิ่ม</span> ระบบตั้งชื่อและไอคอนให้อัตโนมัติ</span></li>
+      </ol>
+
+      <ol class="steps" id="stepsAndroid" hidden>
+        <li><span class="num">1</span><span>เปิดหน้านี้ด้วย <b>Chrome</b></span></li>
+        <li><span class="num">2</span><span>แตะเมนู <span class="kbd">⋮</span> มุมขวาบน</span></li>
+        <li><span class="num">3</span><span>เลือก <span class="kbd">เพิ่มลงในหน้าจอหลัก</span></span></li>
+        <li><span class="num">4</span><span>แตะ <span class="kbd">เพิ่ม</span> ระบบตั้งชื่อและไอคอนให้อัตโนมัติ</span></li>
+      </ol>
+    </section>
+
+  </main>
+
+  <footer>
+    <b>Stock Checking App</b> · For internal use only<br>
+    LPC Dept. / NVL Section
+  </footer>
 
   <script>
     document.getElementById('openBtn').href = APP_URL;
-    var ua = navigator.userAgent;
-    if (/iPhone|iPad|iPod/.test(ua)) document.getElementById('android').className = 'hidden';
-    else if (/Android/.test(ua)) document.getElementById('ios').className = 'hidden';
+
+    function showTab(which) {
+      var ios = which === 'ios';
+      document.getElementById('tabIos').setAttribute('aria-selected', ios);
+      document.getElementById('tabAndroid').setAttribute('aria-selected', !ios);
+      document.getElementById('stepsIos').hidden = !ios;
+      document.getElementById('stepsAndroid').hidden = ios;
+    }
+    document.getElementById('tabIos').onclick = function () { showTab('ios'); };
+    document.getElementById('tabAndroid').onclick = function () { showTab('android'); };
+
+    // เลือกแท็บตามเครื่องอัตโนมัติ
+    if (/Android/i.test(navigator.userAgent)) showTab('android');
   </script>
 </body>
 </html>
